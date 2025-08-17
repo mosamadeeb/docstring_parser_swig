@@ -30,6 +30,7 @@ class DocstringStyle(enum.Enum):
     GOOGLE = 2
     NUMPYDOC = 3
     EPYDOC = 4
+    SWIG = 5
     AUTO = 255
 
 
