@@ -1,13 +1,14 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "docstring_parser"
-version = "0.17.0"
-description = "Parse Python docstrings in reST, Google and Numpydoc format"
+name = "docstring_parser_swig"
+version = "0.0.1"
+description = "Fork of docstring_parser with Swig autodoc support"
 authors = [
     {name="Marcin Kurczewski", email="dash@wind.garden"},
+    {name="mosamadeeb", email="eldeebm2002@gmail.com"},
 ]
 license = { text = "MIT" }
 readme = "README.md"
@@ -18,7 +19,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -28,12 +28,12 @@ classifiers = [
     "Topic :: Text Processing :: Markup",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 [project.urls]
-homepage = "https://github.com/rr-/docstring_parser"
-repository = "https://github.com/rr-/docstring_parser"
-changelog = "https://github.com/rr-/docstring_parser/blob/master/CHANGELOG.md"
+homepage = "https://github.com/mosamadeeb/docstring_parser_swig"
+repository = "https://github.com/mosamadeeb/docstring_parser_swig"
+changelog = "https://github.com/mosamadeeb/docstring_parser_swig/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = [
@@ -48,9 +48,14 @@ dev = [
     "pre-commit >= 2.16.0; python_version>='3.9'",
 ]
 
+[project.scripts]
+gen_stub = "docstring_parser.scripts.gen_stub:main"
+
+[tool.setuptools]
+packages = ["docstring_parser", "docstring_parser.scripts"]
+
 [tool.black]
 line-length = 79
-py38 = true
 
 [tool.isort]
 known_third_party = "docstring_parser"
