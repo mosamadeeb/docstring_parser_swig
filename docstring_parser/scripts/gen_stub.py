@@ -8,13 +8,14 @@
 
 __author__ = "mosamadeeb"
 __license__ = "MIT"
-__version__ = "1.0.1"
+__version__ = "1.0.3"
 
 import importlib
 import importlib.util
 import inspect
 import os
 import sys
+import re
 from contextlib import redirect_stdout
 from io import StringIO
 
@@ -34,6 +35,9 @@ type_map = {
     "std_string_const_ref": "str",
 }
 
+# Types that should only be replaced for the output (because Swig will convert them to native types)
+type_map_native = dict()
+
 # Types to add to the top of the file (set to a dummy value)
 type_set = set()
 
@@ -41,7 +45,7 @@ type_set = set()
 def clean_type_name(type_name: str) -> str:
     cleaned = (
         type_name.replace("<", "__")
-        .replace(">", "_")
+        .replace(">", "__")
         .replace(",", "__")
         .replace("const", "_const")
         .replace("*", "_ptr")
@@ -53,43 +57,69 @@ def clean_type_name(type_name: str) -> str:
     if cleaned not in type_map and cleaned.startswith("std_vector__"):
         # example: std_vector__int__size_type
         value_type = cleaned.split("__")[1]
-        type_map[f"std_vector__{value_type}__size_type"] = "int"
-        type_map[f"std_vector__{value_type}__difference_type"] = "int"
+        type_map[f"std_vector__{value_type}___size_type"] = "int"
+        type_map[f"std_vector__{value_type}___difference_type"] = "int"
 
         translated_type = type_map.get(value_type, value_type)
-        type_map[f"std_vector__{value_type}__value_type"] = translated_type
-        type_map[f"std_vector__{value_type}__value_type_ref"] = translated_type
-        type_map[f"std_vector__{value_type}__value_type_const_ref"] = translated_type
+        type_map[f"std_vector__{value_type}___value_type"] = translated_type
+        type_map[f"std_vector__{value_type}___value_type_ref"] = translated_type
+        type_map[f"std_vector__{value_type}___value_type_const_ref"] = translated_type
 
-        type_map[f"std_vector__{value_type}__iterator"] = "SwigPyIterator"
-        type_map[f"std_vector__{value_type}__reverse_iterator"] = "SwigPyIterator"
+        type_map[f"std_vector__{value_type}___iterator"] = "SwigPyIterator"
+        type_map[f"std_vector__{value_type}___reverse_iterator"] = "SwigPyIterator"
+
+        type_map[cleaned] = f"list[{translated_type}]"
 
     if cleaned not in type_map and cleaned.startswith("std_map__"):
-        # example: std_map__std_string_std_string__size_type
+        # example: std_map__std_string__std_string__size_type
         key_type = cleaned.split("__")[1]
         mapped_type = cleaned.split("__")[2]
-        type_map[f"std_map__{key_type}__{mapped_type}__size_type"] = "int"
+        type_map[f"std_map__{key_type}__{mapped_type}___size_type"] = "int"
 
         translated_key_type = type_map.get(key_type, key_type)
-        type_map[f"std_map__{key_type}__{mapped_type}__key_type"] = translated_key_type
-        type_map[f"std_map__{key_type}__{mapped_type}__key_type_ref"] = translated_key_type
-        type_map[f"std_map__{key_type}__{mapped_type}__key_type_const_ref"] = translated_key_type
+        type_map[f"std_map__{key_type}__{mapped_type}___key_type"] = translated_key_type
+        type_map[f"std_map__{key_type}__{mapped_type}___key_type_ref"] = translated_key_type
+        type_map[f"std_map__{key_type}__{mapped_type}___key_type_const_ref"] = translated_key_type
 
         translated_mapped_type = type_map.get(mapped_type, mapped_type)
-        type_map[f"std_map__{key_type}__{mapped_type}__mapped_type"] = translated_mapped_type
-        type_map[f"std_map__{key_type}__{mapped_type}__mapped_type_ref"] = translated_mapped_type
-        type_map[f"std_map__{key_type}__{mapped_type}__mapped_type_const_ref"] = translated_mapped_type
+        type_map[f"std_map__{key_type}__{mapped_type}___mapped_type"] = translated_mapped_type
+        type_map[f"std_map__{key_type}__{mapped_type}___mapped_type_ref"] = translated_mapped_type
+        type_map[f"std_map__{key_type}__{mapped_type}___mapped_type_const_ref"] = translated_mapped_type
 
-        type_map[f"std_map__{key_type}__{mapped_type}__iterator"] = "SwigPyIterator"
-        type_map[f"std_map__{key_type}__{mapped_type}__reverse_iterator"] = "SwigPyIterator"
-        type_map[f"std_map__{key_type}__{mapped_type}__mapped_type_const_ref"] = translated_mapped_type
+        type_map[f"std_map__{key_type}__{mapped_type}___iterator"] = "SwigPyIterator"
+        type_map[f"std_map__{key_type}__{mapped_type}___reverse_iterator"] = "SwigPyIterator"
+        type_map[f"std_map__{key_type}__{mapped_type}___mapped_type_const_ref"] = translated_mapped_type
+
+        type_map[cleaned] = f"dict[{translated_key_type}, {translated_mapped_type}]"
 
     return type_map.get(cleaned, cleaned)
 
 
-def gen_function(func, indent=False):
+def clean_param_type_name(type_name: str) -> str:
+    cleaned = clean_type_name(type_name)
+    # Allow native types when typemaps are used
+    return f'{cleaned} | {type_map_native[cleaned]}' if cleaned in type_map_native else cleaned
+
+
+def clean_return_type_name(type_name: str) -> str:
+    cleaned = clean_type_name(type_name)
+    return type_map_native.get(cleaned, cleaned)
+
+
+def extract_cpp_type(class_name, cpp_type):
+    cpp_type = cpp_type.replace(' ', '')
+    cleaned = clean_type_name(cpp_type)
+
+    # Update the output type map so that we show the correct return type
+    # This is needed because Swig will return the python native object
+    # https://www.swig.org/Doc4.2/Library.html#Library_std_vector
+    if cleaned.startswith('list') or cleaned.startswith('dict'):
+        type_map_native[class_name] = cleaned
+
+
+def gen_function(func, is_method=False):
     doc = parse(func.__doc__)
-    indent = "    " if indent else ""
+    indent = "    " if is_method else ""
 
     if func.__doc__ == "" or len(doc.meta) == 0:
         # No docs found, use inspect to get signature and type hints
@@ -123,12 +153,17 @@ def gen_function(func, indent=False):
             # Should log something here, but printing something will add it to the output file
             pass
 
+    # Remove self from params
+    params = doc.params
+    if is_method:
+        params = [p for p in params if p.arg_name != "self"]
+
     if doc.style == DocstringStyle.SWIG:
         # Collect overloads: map overload_index -> {'params': [...], 'return': ...}
         overloads = {}
         for example in doc.examples:
             overload_index = example.args[1]
-            overload_params = [param for param in doc.params if param.args[1] == overload_index]
+            overload_params = [param for param in params if param.args[1] == overload_index]
             overload_return = doc.returns if (doc.returns and doc.returns.args[1] == overload_index) else None
             overloads[overload_index] = {"params": overload_params, "return": overload_return}
 
@@ -145,7 +180,7 @@ def gen_function(func, indent=False):
                 for params in param_lists:
                     if i < len(params):
                         names.add(params[i].arg_name)
-                        types.add(clean_type_name(params[i].type_name))
+                        types.add(clean_param_type_name(params[i].type_name))
                 if len(names) == 1 and len(types) == 1:
                     merged_params.append({"arg_name": list(names)[0], "type_name": list(types)[0]})
                 else:
@@ -160,9 +195,9 @@ def gen_function(func, indent=False):
             return_types = set()
             for v in overloads.values():
                 if v["return"]:
-                    return_types.add(clean_type_name(v["return"].type_name))
+                    return_types.add(clean_return_type_name(v["return"].type_name))
 
-            param_str = ", ".join([f"{arg['arg_name']}: {arg['type_name']}" for arg in merged_params])
+            param_str = ", ".join((['self'] if is_method else []) + [f"{arg['arg_name']}: {arg['type_name']}" for arg in merged_params])
             ret_str = " | ".join(sorted(return_types)) if return_types else "None"
 
             print(f"{indent}def {func.__name__}({param_str}) -> {ret_str}:")
@@ -171,8 +206,8 @@ def gen_function(func, indent=False):
             print(f"{indent}    ...")
         else:
             # No overloads
-            param_str = ", ".join([f"{arg.arg_name}: {clean_type_name(arg.type_name)}" for arg in doc.params])
-            ret_str = clean_type_name(doc.returns.type_name) if doc.returns else "None"
+            param_str = ", ".join((['self'] if is_method else []) + [f"{arg.arg_name}: {clean_param_type_name(arg.type_name)}" for arg in params])
+            ret_str = clean_return_type_name(doc.returns.type_name) if doc.returns else "None"
 
             print(f"{indent}def {func.__name__}({param_str}) -> {ret_str}:")
             if func.__doc__ and func.__doc__.strip():
@@ -182,7 +217,7 @@ def gen_function(func, indent=False):
         # This is Doxygen converted to PyDoc
         # TODO: support merged doxygen (pydoc)
         print(
-            f"{indent}def {func.__name__}({', '.join([f'{arg.arg_name}: {clean_type_name(arg.type_name)}' for arg in doc.params])}) -> {clean_type_name(doc.returns.type_name) if doc.returns else 'None'}:"
+            f"{indent}def {func.__name__}({', '.join((['self'] if is_method else []) + [f'{arg.arg_name}: {clean_param_type_name(arg.type_name)}' for arg in params])}) -> {clean_return_type_name(doc.returns.type_name) if doc.returns else 'None'}:"
         )
         if func.__doc__ and func.__doc__.strip():
             print(f'{indent}    r"""{func.__doc__}"""')
@@ -191,30 +226,46 @@ def gen_function(func, indent=False):
     print()
 
 
-def gen_pyi(module_name, target_module,output_path=None):
-    out = StringIO()
-    class_set = set()
-    with redirect_stdout(out):
-        for name in dir(target_module):
-            if not name.startswith("_"):
-                obj = getattr(target_module, name)
-                if isinstance(obj, type):
-                    class_set.add(name)
-                    bases = ", ".join([base.__name__ for base in obj.__bases__])
-                    print(f"class {name}({bases}):")
-                    if obj.__doc__:
-                        print(f'    r"""{obj.__doc__}"""')
-                    print()
-                    for method in obj.__dict__.values():
-                        if callable(method):
-                            if method.__name__ in ['_swig_repr', f'delete_{name}']:
-                                continue
+def gen_pyi(module_name, target_module, output_path=None):
+    function_count = 0
 
-                            gen_function(method, indent=True)
-                    print()
-                else:
-                    if callable(obj):
-                        gen_function(obj)
+    # Do an early pass over classes to populate the native typemap
+    for name, obj in [(n, getattr(target_module, n)) for n in dir(target_module) if not n.startswith("_")]:
+        if isinstance(obj, type):
+            if obj.__doc__:
+                # Check the class doc and extract the type name
+                # example: "Proxy of C++ std::map< std::string,std::string > class."
+                match = re.search(r"Proxy of C\+\+ (.+?) class\.", obj.__doc__)
+                if match:
+                    cpp_type = match.group(1)
+                    extract_cpp_type(name, cpp_type)
+
+    # Class types to NOT add as dummy values
+    class_set = set()
+
+    out = StringIO()
+    with redirect_stdout(out):
+        for name, obj in [(n, getattr(target_module, n)) for n in dir(target_module) if not n.startswith("_")]:
+            if isinstance(obj, type):
+                class_set.add(name)
+                bases = ", ".join([base.__name__ for base in obj.__bases__])
+                print(f"class {name}({bases}):")
+                if obj.__doc__:
+                    print(f'    r"""{obj.__doc__}"""')
+                print('    ...\n')
+
+                for method in obj.__dict__.values():
+                    if callable(method):
+                        if method.__name__ in ["_swig_repr", f"delete_{name}"]:
+                            continue
+
+                        gen_function(method, is_method=True)
+                        function_count += 1
+                print()
+            else:
+                if callable(obj):
+                    gen_function(obj)
+                    function_count += 1
 
     if output_path is None:
         output_path = f"{module_name}.pyi"
@@ -226,6 +277,7 @@ def gen_pyi(module_name, target_module,output_path=None):
         f.write("\n")
         f.write(out.getvalue())
 
+    return len(class_set), function_count
 
 def main():
     help_text = f"""
@@ -266,7 +318,9 @@ If a module name is given, the output will be created in the current directory.
         module_name = arg
         target_module = importlib.import_module(module_name)
 
-    gen_pyi(module_name, target_module, output_path)
+    class_count, function_count = gen_pyi(module_name, target_module, output_path)
+    print(f"Generated type hints for {class_count} classes and {function_count} functions")
+
 
 if __name__ == "__main__":
     main()

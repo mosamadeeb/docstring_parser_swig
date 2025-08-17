@@ -1,3 +1,15 @@
+# (swig fork) 0.0.3 (2025-08-17)
+Many improvements to the script, including:
+- Make "self" parameter consistent
+- Support output typemaps for std::vector and std::map (only the native type is used)
+- Support input typemaps (both proxy and native type are shown)
+- Rename script to "docstring_gen_stub"
+
+TODO:
+  - Add support for overloaded Doxygen docs
+  - Improve support for overloads in general (optional args)
+  - Add support for enums (would require passing the enum's name to the script)
+
 # (swig fork) 0.0.2 (2025-08-17)
 - Script: Fixed dummy float type generation and adjusted class documentation 
 
