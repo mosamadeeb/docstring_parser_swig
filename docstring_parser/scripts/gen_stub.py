@@ -27,6 +27,7 @@ type_map = {
     "unsignedlong": "int",
     "short": "int",
     "double": "float",
+    "float": "float",
     "bool": "bool",
     "std_string": "str",
     "std_string_ref": "str",
@@ -201,10 +202,14 @@ def gen_pyi(module_name, target_module,output_path=None):
                     class_set.add(name)
                     bases = ", ".join([base.__name__ for base in obj.__bases__])
                     print(f"class {name}({bases}):")
-                    print(f'    r"""{obj.__doc__}\n    """')
+                    if obj.__doc__:
+                        print(f'    r"""{obj.__doc__}"""')
                     print()
                     for method in obj.__dict__.values():
                         if callable(method):
+                            if method.__name__ in ['_swig_repr', f'delete_{name}']:
+                                continue
+
                             gen_function(method, indent=True)
                     print()
                 else:
