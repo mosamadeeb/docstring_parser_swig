@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docstring_parser_swig"
-version = "0.0.1"
+version = "0.0.2"
 description = "Fork of docstring_parser with Swig autodoc support"
 authors = [
     {name="Marcin Kurczewski", email="dash@wind.garden"},

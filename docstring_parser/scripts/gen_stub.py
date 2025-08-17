@@ -8,7 +8,7 @@
 
 __author__ = "mosamadeeb"
 __license__ = "MIT"
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 import importlib
 import importlib.util
@@ -231,7 +231,7 @@ def main():
     help_text = f"""
 Usage: {sys.argv[0]} <module_name_or_path>
 
-Generate a .pyi stub file for a Python module using docstring for type hints.
+Generate a .pyi stub file for a Python module using docstring for type hints. Supports type hints for Swig generated bindings.
 
 You can provide either a module name (e.g. mymodule) or a path to a .py file (e.g. /path/to/mymodule.py).
 If a file path is given, the output .pyi file will be created in the same directory as the input file.
